@@ -1,0 +1,124 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  labels:
+    app: springcloud
+  name: springcloud
+  namespace: springcloud
+spec:
+  failedBuildsHistoryLimit: 3
+  output:
+    to:
+      kind: DockerImage
+      name: 'springcloud:latest'
+    pushSecret:
+      name: 'icr'
+  runPolicy: Serial
+  source:
+    git:
+      ref: "main"
+      uri: "https://github.com/SaifRehman/spring-cloud-sample"
+    type: Git
+  strategy:
+    dockerStrategy: {}
+    type: Docker
+  successfulBuildsHistoryLimit: 3
+  triggers:
+    - type: ConfigChange
+    - generic:
+        secret: $(head -c 24 /dev/random | base64)
+      type: Generic
+    - github:
+        secret: $(head -c 24 /dev/random | base64)
+      type: GitHub
+---
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
+metadata:
+  labels:
+    app: springcloud
+  name: springcloud
+  namespace: springcloud
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    app: springcloud
+  strategy:
+    rollingParams:
+      intervalSeconds: 1
+      maxSurge: 25%
+      maxUnavailable: 25%
+      timeoutSeconds: 600
+      updatePeriodSeconds: 1
+    type: Rolling
+  template:
+    metadata:
+      labels:
+        app: springcloud
+      name: springcloud
+    spec:
+      serviceAccountName: default
+      containers:
+        - image: springcloud
+          imagePullPolicy: Always
+          name: springcloud
+          ports:
+            - containerPort: 3000
+              protocol: TCP
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 3Gi
+            requests:
+              cpu: 800m
+              memory: 2Gi
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 3000
+              scheme: HTTPS
+            initialDelaySeconds: 120
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 10
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+  test: false
+  triggers:
+    - type: ImageChange
+      imageChangeParams:
+        automatic: true
+        containerNames:
+          - springcloud
+        from:
+          kind: ImageStreamTag
+          name: 'springcloud:latest'
+          namespace: springcloud
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  labels:
+    app: springcloud
+  name: springcloud
+  namespace: springcloud
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: springcloud
+  name: springcloud
+  namespace: springcloud
+spec:
+  ports:
+    - name: 3000-tcp
+      port: 8761
+      protocol: TCP
+      targetPort: 8761
+  selector:
+    app: springcloud
+  sessionAffinity: None
+  type: ClusterIP
